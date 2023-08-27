@@ -1,0 +1,348 @@
+import 'package:ar_flutter_plugin/datatypes/config_planedetection.dart';
+import 'package:ar_flutter_plugin/datatypes/hittest_result_types.dart';
+import 'package:ar_flutter_plugin/datatypes/node_types.dart';
+import 'package:ar_flutter_plugin/managers/ar_anchor_manager.dart';
+import 'package:ar_flutter_plugin/managers/ar_location_manager.dart';
+import 'package:ar_flutter_plugin/managers/ar_object_manager.dart';
+import 'package:ar_flutter_plugin/managers/ar_session_manager.dart';
+import 'package:ar_flutter_plugin/models/ar_anchor.dart';
+import 'package:ar_flutter_plugin/models/ar_hittest_result.dart';
+import 'package:ar_flutter_plugin/models/ar_node.dart';
+import 'package:ar_flutter_plugin/widgets/ar_view.dart';
+import 'package:flutter/material.dart';
+import 'package:hoopla_pocket/src/features/core/camera/widgets/AR_demo.dart';
+import 'package:hoopla_pocket/src/features/core/camera/widgets/assets.dart';
+import 'package:hoopla_pocket/src/features/core/camera/widgets/functions.dart';
+import 'package:image_gallery_saver/image_gallery_saver.dart';
+import 'package:percent_indicator/linear_percent_indicator.dart';
+import 'package:vector_math/vector_math_64.dart' as vector;
+import '../../../constants/colors.dart';
+
+class ARCamera extends StatefulWidget {
+  const ARCamera({super.key});
+
+  @override
+  State<ARCamera> createState() => _ARCameraState();
+}
+
+class _ARCameraState extends State<ARCamera> with WidgetsBindingObserver {
+  late ARSessionManager arSessionManager;
+  late ARObjectManager arObjectManager;
+  late ARAnchorManager arAnchorManager;
+
+  List<ARNode> nodes = [];
+  List<ARAnchor> anchors = [];
+
+  @override
+  void dispose() {
+    super.dispose();
+    arSessionManager.dispose();
+  }
+
+  bool loaded = true;
+  double progress = 0;
+  String assetsName = "";
+
+  void onARViewCreated(
+      ARSessionManager arSessionManager,
+      ARObjectManager arObjectManager,
+      ARAnchorManager arAnchorManager,
+      ARLocationManager arLocationManager) {
+    this.arSessionManager = arSessionManager;
+    this.arObjectManager = arObjectManager;
+    this.arAnchorManager = arAnchorManager;
+
+    this.arSessionManager.onInitialize(
+          showFeaturePoints: false,
+          showPlanes: true,
+          showWorldOrigin: false,
+          handleTaps: true,
+          handlePans: true,
+          handleRotation: true,
+        );
+    this.arObjectManager.onInitialize();
+    this.arSessionManager.onPlaneOrPointTap = onPlaneOrPointTapped;
+    this.arObjectManager.onPanStart = onPanStarted;
+    this.arObjectManager.onPanChange = onPanChanged;
+    this.arObjectManager.onPanEnd = onPanEnded;
+    this.arObjectManager.onRotationStart = onRotationStarted;
+    this.arObjectManager.onRotationChange = onRotationChanged;
+    this.arObjectManager.onRotationEnd = onRotationEnded;
+  }
+
+  onPanStarted(String nodeName) {
+    debugPrint("Started panning node $nodeName");
+  }
+
+  onPanChanged(String nodeName) {
+    debugPrint("Continued panning node $nodeName");
+  }
+
+  onPanEnded(String nodeName, Matrix4 newTransform) {
+    debugPrint("Ended panning node " + nodeName);
+
+    Widget build(BuildContext context) {
+      return Container();
+    }
+  }
+
+  onRotationStarted(String nodeName) {
+    debugPrint("Started rotating node $nodeName");
+  }
+
+  onRotationChanged(String nodeName) {
+    debugPrint("Continued rotating node $nodeName");
+  }
+
+  onRotationEnded(String nodeName, Matrix4 newTransform) {
+    debugPrint("Ended rotating node $nodeName");
+  }
+
+  Future<void> onRemoveEverything() async {
+    for (var anchor in anchors) {
+      arAnchorManager.removeAnchor(anchor);
+    }
+
+    anchors = [];
+  }
+
+  Future<void> onTakeScreenshot() async {
+    ImageProvider<Object> capture = await arSessionManager.snapshot();
+    // ignore: use_build_context_synchronously
+    await showDialog(
+        context: context,
+        builder: (_) => Dialog(
+              child: Container(
+                decoration: BoxDecoration(
+                    image: DecorationImage(image: capture, fit: BoxFit.cover)),
+              ),
+            ));
+    await ImageGallerySaver.saveImage((capture as MemoryImage).bytes);
+  }
+
+  Future<void> onPlaneOrPointTapped(
+      List<ARHitTestResult> hitTestResults) async {
+    if (assetsName.isNotEmpty) {
+      try {
+        var singleHitTestResult = hitTestResults.firstWhere(
+            (hitTestResult) => hitTestResult.type == ARHitTestResultType.plane);
+        var newAnchor =
+            ARPlaneAnchor(transformation: singleHitTestResult.worldTransform);
+        bool didAddAnchor = await arAnchorManager.addAnchor(newAnchor) ?? false;
+        if (didAddAnchor) {
+          anchors.add(newAnchor);
+
+          // Add note to anchor
+          var newNode = ARNode(
+              type: NodeType.fileSystemAppFolderGLB,
+              uri: assetsName,
+              scale: vector.Vector3(.2, .2, .2),
+              position: vector.Vector3(0.0, 0.0, 0.0),
+              rotation: vector.Vector4(1.0, 0.0, 0.0, 0.0));
+          bool didAddNodeToAnchor =
+              await arObjectManager.addNode(newNode, planeAnchor: newAnchor) ??
+                  false;
+
+          if (didAddNodeToAnchor) {
+            nodes.add(newNode);
+          } else {
+            arSessionManager.onError("Adding Node to Anchor failed");
+          }
+        } else {
+          arSessionManager.onError("Adding Anchor failed");
+        }
+      } catch (ex) {
+        arSessionManager
+            .onError('Move Your Camera Around to find flat surface first.');
+      }
+    } else {
+      arSessionManager.onError('Ops! please choose an animal first.');
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        leading: IconButton(
+          onPressed: () {
+            onRemoveEverything();
+            Navigator.pop(context);
+          },
+          icon: const Icon(Icons.home),
+          iconSize: 30,
+          color: MyColors.darkPurple,
+        ),
+        //appbar setup
+        centerTitle: true,
+        elevation: 0,
+        backgroundColor: MyColors.purple,
+      ),
+      body: !loaded
+          ? DownloadItem(progress: progress)
+          : Stack(
+              children: [
+                ARView(
+                  onARViewCreated: onARViewCreated,
+                  planeDetectionConfig:
+                      PlaneDetectionConfig.horizontalAndVertical,
+                ),
+                Align(
+                  alignment: FractionalOffset.bottomRight,
+                  child: Container(
+                    margin:
+                        const EdgeInsets.only(bottom: 100, left: 30, right: 30),
+                    height: 200,
+                    child: ListView(
+                      scrollDirection: Axis.horizontal,
+                      children: [
+                        const Text(
+                          'scroll for more >>',
+                          style: TextStyle(fontStyle: FontStyle.italic),
+                        ),
+                        ...assets.entries
+                            .map(
+                              (MapEntry e) => Padding(
+                                padding: const EdgeInsets.all(8.0),
+                                child: InkWell(
+                                  onTap: () {
+                                    setState(() {
+                                      onRemoveEverything();
+                                      assetsName = e.key;
+                                    });
+
+                                    downloadAsset(
+                                      url: e.value[0],
+                                      // videoUrl: e.value[3],
+                                      filename: e.key,
+                                      callWhenFileDownload: () {
+                                        setState(() {
+                                          loaded = false;
+                                        });
+                                      },
+                                      onReceiveProgress: (rcv, total) {
+                                        setState(() {
+                                          progress = rcv / total;
+                                        });
+                                      },
+                                      callWhenFileDownloaded: () {
+                                        setState(() {
+                                          progress = 0;
+                                          loaded = true;
+                                          assetsName = e.key;
+                                        });
+                                      },
+                                    );
+                                  },
+                                  child: Row(
+                                    mainAxisAlignment:
+                                        MainAxisAlignment.spaceEvenly,
+                                    children: [
+                                      Container(
+                                        width: 150,
+                                        height: 150,
+                                        decoration: BoxDecoration(
+                                          border:
+                                              Border.all(color: MyColors.pink),
+                                          borderRadius:
+                                              BorderRadiusDirectional.circular(
+                                                  20),
+                                          color: Colors.transparent,
+                                        ),
+                                        child: Image.network(
+                                          e.value[2],
+                                          fit: BoxFit.cover,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            )
+                            .toList(),
+                      ],
+                    ),
+                  ),
+                ),
+                Align(
+                  alignment: FractionalOffset.bottomRight,
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                    children: [
+                      Container(
+                        margin: const EdgeInsets.only(bottom: 30),
+                        decoration: const BoxDecoration(
+                            shape: BoxShape.circle, color: MyColors.purple),
+                        child: IconButton(
+                          onPressed: onRemoveEverything,
+                          icon: const Icon(Icons.refresh_rounded),
+                          iconSize: 30,
+                          color: MyColors.darkPurple,
+                        ),
+                      ),
+                      Container(
+                        margin: const EdgeInsets.only(bottom: 30),
+                        decoration: const BoxDecoration(
+                            shape: BoxShape.circle, color: MyColors.purple),
+                        child: IconButton(
+                          onPressed: onTakeScreenshot,
+                          icon: const Icon(Icons.camera_enhance),
+                          iconSize: 30,
+                          color: MyColors.darkPurple,
+                        ),
+                      ),
+                      Container(
+                        margin: const EdgeInsets.only(bottom: 30),
+                        decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(50)),
+                        child: TextButton(
+                          onPressed: () {
+                            onRemoveEverything();
+                            Navigator.pushReplacement(
+                              context,
+                              MaterialPageRoute(
+                                  builder: (context) => const ARdemo()),
+                            );
+                          },
+                          child: const Text(
+                            'AR Tutorial',
+                            style: TextStyle(
+                              fontFamily: 'bubble',
+                              color: MyColors.darkPurple,
+                              fontSize: 25,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                )
+              ],
+            ),
+    );
+  }
+}
+
+// blank page shown with proression bar while fetch file in database
+class DownloadItem extends StatelessWidget {
+  const DownloadItem({
+    Key? key,
+    required this.progress,
+  }) : super(key: key);
+
+  final double progress;
+
+  @override
+  Widget build(BuildContext context) {
+    return LinearPercentIndicator(
+      width: MediaQuery.of(context).size.width,
+      lineHeight: 10.0,
+      percent: progress,
+      backgroundColor: Colors.grey,
+      progressColor: MyColors.green,
+    );
+  }
+}
+
+
+
