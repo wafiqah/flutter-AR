@@ -1,0 +1,11 @@
+Map<String, List<String>> assets = {
+  "blackbear": [
+    "(//Your link)", //3D model's link from Firebase Storage
+    "(//Your link)", //picture's link from Firebase Storage
+  ],
+  //
+  "camel": [
+    "(//Your link)",
+    "(//Your link)",
+  ],
+// Add another animals
