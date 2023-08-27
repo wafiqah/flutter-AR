@@ -6,6 +6,6 @@ This is a simple code that fecth on the fly (Augmented Reality) from Firebase St
 
 Additional Informations 🐱:
 
-Flutter version: 3.7.9
-Android SDK version: 33.0.1
+- Flutter version: 3.7.9
+- Android SDK version: 33.0.1
 
