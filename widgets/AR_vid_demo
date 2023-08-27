@@ -1,0 +1,102 @@
+import 'package:flutter/material.dart';
+import 'package:hoopla_pocket/src/features/core/camera/AR_try.dart';
+import 'package:video_player/video_player.dart';
+
+import '../../../../constants/colors.dart';
+import '../../../../constants/size.dart';
+
+class ARdemo extends StatefulWidget {
+  const ARdemo({super.key});
+
+  @override
+  _ARdemoState createState() => _ARdemoState();
+}
+
+class _ARdemoState extends State<ARdemo> {
+  late VideoPlayerController _controller;
+  bool _isVideoLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = VideoPlayerController.networkUrl(Uri.parse(
+        '(//Your link here)')) // Firebase Storage
+      ..initialize().then((_) {
+        setState(() {
+          _isVideoLoading = false;
+        });
+      });
+    _controller.addListener(_videoListener);
+  }
+
+  void _videoListener() {
+    // Check if the video has reached the end
+    if (_controller.value.position >= _controller.value.duration) {
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (context) => const ARCamera()),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: MyColors.lightYellow,
+      appBar: AppBar(
+        leading: IconButton(
+          icon: Icon(Icons.arrow_back),
+          iconSize: 30,
+          color: MyColors.darkPurple,
+          onPressed: () {
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(builder: (context) => const ARCamera()),
+            );
+          },
+        ),
+        centerTitle: true,
+        elevation: 0,
+        backgroundColor: Colors.transparent,
+      ),
+      body: Container(
+        padding: EdgeInsets.all(dashboardPadding),
+        child: Stack(
+          children: [
+            Center(
+              child: _controller.value.isInitialized
+                  ? AspectRatio(
+                      aspectRatio: _controller.value.aspectRatio,
+                      child: VideoPlayer(_controller),
+                    )
+                  : Container(),
+            ),
+            if (_isVideoLoading)
+              Center(
+                child: CircularProgressIndicator(),
+              ),
+            FloatingActionButton(
+              backgroundColor: MyColors.darkPurple,
+              onPressed: () {
+                setState(() {
+                  _controller.value.isPlaying
+                      ? _controller.pause()
+                      : _controller.play();
+                });
+              },
+              child: Icon(
+                _controller.value.isPlaying ? Icons.pause : Icons.play_arrow,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  @override
+  void dispose() {
+    super.dispose();
+    _controller.dispose();
+  }
+}
